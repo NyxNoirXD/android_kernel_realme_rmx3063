@@ -38,6 +38,11 @@ struct vm_struct {
 	unsigned int		nr_pages;
 	phys_addr_t		phys_addr;
 	const void		*caller;
+#if defined(VENDOR_EDIT) && defined(CONFIG_VMALLOC_DEBUG)
+	/* Kui.Zhang@tech.kernel.mm, 2020-02-13, record the stack hash
+	 */
+	unsigned int		hash;
+#endif
 };
 
 struct vmap_area {
@@ -61,10 +66,20 @@ extern void vm_unmap_aliases(void);
 
 #ifdef CONFIG_MMU
 extern void __init vmalloc_init(void);
+#if defined(VENDOR_EDIT) && defined(CONFIG_VMALLOC_DEBUG)
+/* Kui.Zhang@Bsp.Kernel.mm, 2020/08/03, statistics of vmalloc used.
+*/
+extern unsigned long vmalloc_nr_pages(void);
+#endif
 #else
 static inline void vmalloc_init(void)
 {
 }
+#if defined(VENDOR_EDIT) && defined(CONFIG_VMALLOC_DEBUG)
+/* Kui.Zhang@Bsp.Kernel.mm, 2020/08/03, statistics of vmalloc used.
+*/
+static inline unsigned long vmalloc_nr_pages(void) { return 0; }
+#endif
 #endif
 
 extern void *vmalloc(unsigned long size);

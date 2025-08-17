@@ -227,8 +227,11 @@ static void return_io(struct bio_list *return_bi)
 	struct bio *bi;
 	while ((bi = bio_list_pop(return_bi)) != NULL) {
 		bi->bi_iter.bi_size = 0;
+#ifndef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
+		/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
 		trace_block_bio_complete(bdev_get_queue(bi->bi_bdev),
 					 bi, 0);
+#endif
 		bio_endio(bi);
 	}
 }
@@ -4822,8 +4825,11 @@ static void raid5_align_endio(struct bio *bi)
 	rdev_dec_pending(rdev, conf->mddev);
 
 	if (!error) {
+#ifndef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
+		/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
 		trace_block_bio_complete(bdev_get_queue(raid_bi->bi_bdev),
 					 raid_bi, 0);
+#endif
 		bio_endio(raid_bi);
 		if (atomic_dec_and_test(&conf->active_aligned_reads))
 			wake_up(&conf->wait_for_quiescent);
@@ -6178,10 +6184,10 @@ raid5_store_skip_copy(struct mddev *mddev, const char *page, size_t len)
 		mddev_suspend(mddev);
 		conf->skip_copy = new;
 		if (new)
-			mddev->queue->backing_dev_info.capabilities |=
+			mddev->queue->backing_dev_info->capabilities |=
 				BDI_CAP_STABLE_WRITES;
 		else
-			mddev->queue->backing_dev_info.capabilities &=
+			mddev->queue->backing_dev_info->capabilities &=
 				~BDI_CAP_STABLE_WRITES;
 		mddev_resume(mddev);
 	}
@@ -7009,8 +7015,8 @@ static int raid5_run(struct mddev *mddev)
 		int data_disks = conf->previous_raid_disks - conf->max_degraded;
 		int stripe = data_disks *
 			((mddev->chunk_sectors << 9) / PAGE_SIZE);
-		if (mddev->queue->backing_dev_info.ra_pages < 2 * stripe)
-			mddev->queue->backing_dev_info.ra_pages = 2 * stripe;
+		if (mddev->queue->backing_dev_info->ra_pages < 2 * stripe)
+			mddev->queue->backing_dev_info->ra_pages = 2 * stripe;
 
 		chunk_size = mddev->chunk_sectors << 9;
 		blk_queue_io_min(mddev->queue, chunk_size);
@@ -7616,8 +7622,8 @@ static void end_reshape(struct r5conf *conf)
 			int data_disks = conf->raid_disks - conf->max_degraded;
 			int stripe = data_disks * ((conf->chunk_sectors << 9)
 						   / PAGE_SIZE);
-			if (conf->mddev->queue->backing_dev_info.ra_pages < 2 * stripe)
-				conf->mddev->queue->backing_dev_info.ra_pages = 2 * stripe;
+			if (conf->mddev->queue->backing_dev_info->ra_pages < 2 * stripe)
+				conf->mddev->queue->backing_dev_info->ra_pages = 2 * stripe;
 		}
 	}
 }

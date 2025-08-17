@@ -1776,6 +1776,21 @@ void __split_huge_pmd(struct vm_area_struct *vma, pmd_t *pmd,
 out:
 	spin_unlock(ptl);
 	mmu_notifier_invalidate_range_end(mm, haddr, haddr + HPAGE_PMD_SIZE);
+	if (!was_locked && page)
+		unlock_page(page);
+	/*
+	 * No need to double call mmu_notifier->invalidate_range() callback.
+	 * They are 3 cases to consider inside __split_huge_pmd_locked():
+	 *  1) pmdp_huge_clear_flush_notify() call invalidate_range() obvious
+	 *  2) __split_huge_zero_page_pmd() read only zero page and any write
+	 *    fault will trigger a flush_notify before pointing to a new page
+	 *    (it is fine if the secondary mmu keeps pointing to the old zero
+	 *    page in the meantime)
+	 *  3) Split a huge pmd into pte pointing to the same page. No need
+	 *     to invalidate secondary tlb entry they are all still valid.
+	 *     any further changes to individual pte will notify. So no need
+	 *     to call mmu_notifier->invalidate_range()
+	 */
 }
 
 void split_huge_pmd_address(struct vm_area_struct *vma, unsigned long address,
@@ -1890,6 +1905,7 @@ static void __split_huge_page_tail(struct page *head, int tail,
 			 (1L << PG_mlocked) |
 			 (1L << PG_uptodate) |
 			 (1L << PG_active) |
+			 (1L << PG_workingset) |
 			 (1L << PG_locked) |
 			 (1L << PG_unevictable) |
 			 (1L << PG_dirty)));

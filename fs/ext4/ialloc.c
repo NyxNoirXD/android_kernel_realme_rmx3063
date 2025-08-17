@@ -1072,6 +1072,17 @@ got:
 	if (err)
 		goto fail_drop;
 
+	/*
+	 * Since the encryption xattr will always be unique, create it first so
+	 * that it's less likely to end up in an external xattr block and
+	 * prevent its deduplication.
+	 */
+	if (encrypt) {
+		err = fscrypt_inherit_context(dir, inode, handle, true);
+		if (err)
+			goto fail_free_drop;
+	}
+
 	err = ext4_init_acl(handle, inode, dir);
 	if (err)
 		goto fail_free_drop;
@@ -1091,13 +1102,6 @@ got:
 	if (ext4_handle_valid(handle)) {
 		ei->i_sync_tid = handle->h_transaction->t_tid;
 		ei->i_datasync_tid = handle->h_transaction->t_tid;
-	}
-
-	if (encrypt) {
-		/* give pointer to avoid set_context with journal ops. */
-		err = fscrypt_inherit_context(dir, inode, &encrypt, true);
-		if (err)
-			goto fail_free_drop;
 	}
 
 	err = ext4_mark_inode_dirty(handle, inode);
@@ -1371,3 +1375,73 @@ err_out:
 out:
 	return ret;
 }
+
+#ifdef CONFIG_OPLUS_FEATURE_EXT4_DEFRAG
+/* yanwu@TECH.Storage.FS.EXT4, 2020/02/29, support ext4 defrag */
+/**
+ * ext4_query_inode_range() -- query inodes in specified range
+ * @sb superblock
+ * @start first ino to query
+ * @end last ino to query
+ * @match_fn matching function, return true to stop query
+ * return true if inode found, otherwise false.
+ */
+bool ext4_query_inode_range(struct super_block * sb, unsigned long start,
+		       unsigned long end, bool(*match_fn) (struct inode *inode,
+							   void *priv),
+		       void *priv)
+{
+	struct buffer_head *bitmap_bh = NULL;
+	struct inode *inode;
+	unsigned long ino;
+	int bit;
+	ext4_group_t group, last_group, ngroups;
+	bool found = false;
+	ngroups = ext4_get_groups_count(sb);
+	group = (start - 1) / EXT4_INODES_PER_GROUP(sb);
+	last_group = (end - 1) / EXT4_INODES_PER_GROUP(sb);
+	if (last_group >= ngroups)
+		last_group = ngroups - 1;
+	bit = (start - 1) % EXT4_INODES_PER_GROUP(sb);
+	while (group <= last_group) {
+		if (bitmap_bh == NULL)
+			bitmap_bh = ext4_read_inode_bitmap(sb, group);
+		if (IS_ERR(bitmap_bh)) {
+			group++;
+			bitmap_bh = NULL;
+			bit = 0;
+			continue;
+		}
+		bit =
+		    ext4_find_next_bit(bitmap_bh->b_data, bit,
+				       EXT4_INODES_PER_GROUP(sb));
+		ino = group * EXT4_INODES_PER_GROUP(sb) + 1 + bit;
+		if (ino > end) {
+			brelse(bitmap_bh);
+			break;
+		}
+		if (bit >= EXT4_INODES_PER_GROUP(sb)) {
+			brelse(bitmap_bh);
+			bitmap_bh = NULL;
+			bit = 0;
+			group++;
+		}
+		bit++;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,19,0)
+		inode = ext4_iget_normal(sb, ino);
+#else
+		inode = ext4_iget(sb, ino, EXT4_IGET_NORMAL);
+#endif
+		if (IS_ERR(inode)) {
+			continue;
+		}
+		found = match_fn(inode, priv);
+		iput(inode);
+		if (found) {
+			brelse(bitmap_bh);
+			break;
+		}
+	}
+	return found;
+}
+#endif

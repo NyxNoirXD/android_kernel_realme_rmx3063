@@ -55,6 +55,8 @@
 #include <linux/shm.h>
 #include <linux/kcov.h>
 
+#include "sched/tune.h"
+
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/pgtable.h>
@@ -69,6 +71,10 @@ static void __unhash_process(struct task_struct *p, bool group_dead)
 		detach_pid(p, PIDTYPE_SID);
 
 		list_del_rcu(&p->tasks);
+#if defined(VENDOR_EDIT) && defined(CONFIG_DUMP_TASKS_MEM)
+		/* Kui.Zhang@BSP.Kernel.MM, 2020-05-20 record ions info of task. */
+		list_del_rcu(&p->user_tasks);
+#endif
 		list_del_init(&p->sibling);
 		__this_cpu_dec(process_counts);
 	}
@@ -783,6 +789,9 @@ void __noreturn do_exit(long code)
 	}
 
 	exit_signals(tsk);  /* sets PF_EXITING */
+
+	schedtune_exit_task(tsk);
+
 	/*
 	 * Ensure that all new tsk->pi_lock acquisitions must observe
 	 * PF_EXITING. Serializes against futex.c:attach_to_pi_owner().

@@ -34,6 +34,7 @@
 #include <linux/mutex.h>
 #include <linux/anon_inodes.h>
 #include <linux/device.h>
+#include <linux/freezer.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/mman.h>
@@ -42,6 +43,7 @@
 #include <linux/seq_file.h>
 #include <linux/compat.h>
 #include <linux/rculist.h>
+#include <mt-plat/fpsgo_common.h>
 
 /*
  * LOCKING:
@@ -1332,6 +1334,22 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 		RCU_INIT_POINTER(epi->ws, NULL);
 	}
 
+	/* Add the current item to the list of active epoll hook for this file */
+	spin_lock(&tfile->f_lock);
+	list_add_tail_rcu(&epi->fllink, &tfile->f_ep_links);
+	spin_unlock(&tfile->f_lock);
+
+	/*
+	 * Add the current item to the RB tree. All RB tree operations are
+	 * protected by "mtx", and ep_insert() is called with "mtx" held.
+	 */
+	ep_rbtree_insert(ep, epi);
+
+	/* now check if we've created too many backpaths */
+	error = -EINVAL;
+	if (full_check && reverse_path_check())
+		goto error_remove_epi;
+
 	/* Initialize the poll table using the queue callback */
 	epq.epi = epi;
 	init_poll_funcptr(&epq.pt, ep_ptable_queue_proc);
@@ -1353,22 +1371,6 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 	error = -ENOMEM;
 	if (epi->nwait < 0)
 		goto error_unregister;
-
-	/* Add the current item to the list of active epoll hook for this file */
-	spin_lock(&tfile->f_lock);
-	list_add_tail_rcu(&epi->fllink, &tfile->f_ep_links);
-	spin_unlock(&tfile->f_lock);
-
-	/*
-	 * Add the current item to the RB tree. All RB tree operations are
-	 * protected by "mtx", and ep_insert() is called with "mtx" held.
-	 */
-	ep_rbtree_insert(ep, epi);
-
-	/* now check if we've created too many backpaths */
-	error = -EINVAL;
-	if (full_check && reverse_path_check())
-		goto error_remove_epi;
 
 	/* We have to drop the new item inside our item list to keep track of it */
 	spin_lock_irqsave(&ep->lock, flags);
@@ -1395,15 +1397,15 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 
 	return 0;
 
+error_unregister:
+	ep_unregister_pollwait(ep, epi);
+
 error_remove_epi:
 	spin_lock(&tfile->f_lock);
 	list_del_rcu(&epi->fllink);
 	spin_unlock(&tfile->f_lock);
 
 	rb_erase(&epi->rbn, &ep->rbr);
-
-error_unregister:
-	ep_unregister_pollwait(ep, epi);
 
 	/*
 	 * We need to do this because an event could have been arrived on some
@@ -1624,7 +1626,7 @@ static inline struct timespec64 ep_set_mstimeout(long ms)
 static int ep_poll(struct eventpoll *ep, struct epoll_event __user *events,
 		   int maxevents, long timeout)
 {
-	int res = 0, eavail, timed_out = 0;
+	int res = 0, eavail, timed_out = 0, rc;
 	unsigned long flags;
 	u64 slack = 0;
 	wait_queue_t wait;
@@ -1673,8 +1675,15 @@ fetch_events:
 			}
 
 			spin_unlock_irqrestore(&ep->lock, flags);
-			if (!schedule_hrtimeout_range(to, slack, HRTIMER_MODE_ABS))
+
+			xgf_epoll_igather_timer(current, to, 1);
+
+			rc = freezable_schedule_hrtimeout_range(to, slack,
+				HRTIMER_MODE_ABS);
+			if (!rc)
 				timed_out = 1;
+
+			xgf_epoll_igather_timer(current, to, rc ? -1 : 0);
 
 			spin_lock_irqsave(&ep->lock, flags);
 		}
@@ -1748,6 +1757,7 @@ static int ep_loop_check_proc(void *priv, void *cookie, int call_nests)
 			 * during ep_insert().
 			 */
 			if (list_empty(&epi->ffd.file->f_tfile_llink))
+				if (get_file_rcu(epi->ffd.file))	
 				list_add(&epi->ffd.file->f_tfile_llink,
 					 &tfile_check_list);
 		}

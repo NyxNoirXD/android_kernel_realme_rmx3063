@@ -87,6 +87,16 @@ extern int page_group_by_mobility_disabled;
 	get_pfnblock_flags_mask(page, page_to_pfn(page),		\
 			PB_migrate_end, MIGRATETYPE_MASK)
 
+static inline int get_pfnblock_migratetype(struct page *page, unsigned long pfn)
+{
+	return get_pfnblock_flags_mask(page, pfn, PB_migrate_end,
+					MIGRATETYPE_MASK);
+}
+
+#ifdef VENDOR_EDIT
+#define FREE_AREA_COUNTS 4
+#define HIGH_ORDER_TO_FLC 3
+#endif
 struct free_area {
 	struct list_head	free_list[MIGRATE_TYPES];
 	unsigned long		nr_free;
@@ -139,6 +149,10 @@ enum zone_stat_item {
 	NUMA_OTHER,		/* allocation from other node */
 #endif
 	NR_FREE_CMA_PAGES,
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-09-25, add ion cached account*/
+	NR_IONCACHE_PAGES,
+#endif /* VENDOR_EDIT */
 	NR_VM_ZONE_STAT_ITEMS };
 
 enum node_stat_item {
@@ -153,6 +167,7 @@ enum node_stat_item {
 	NR_PAGES_SCANNED,	/* pages scanned since last reclaim */
 	WORKINGSET_REFAULT,
 	WORKINGSET_ACTIVATE,
+	WORKINGSET_RESTORE,
 	WORKINGSET_NODERECLAIM,
 	NR_ANON_MAPPED,	/* Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
@@ -344,6 +359,13 @@ enum zone_type {
 
 #ifndef __GENERATING_BOUNDS_H
 
+#ifdef VENDOR_EDIT
+struct page_label {
+    unsigned long label;
+    unsigned long segment;
+};
+#endif
+
 struct zone {
 	/* Read-mostly fields */
 
@@ -351,6 +373,7 @@ struct zone {
 	unsigned long watermark[NR_WMARK];
 
 	unsigned long nr_reserved_highatomic;
+
 
 	/*
 	 * We don't know if the memory that we're going to allocate will be
@@ -424,6 +447,9 @@ struct zone {
 	unsigned long		managed_pages;
 	unsigned long		spanned_pages;
 	unsigned long		present_pages;
+#ifdef VENDOR_EDIT
+    struct page_label zone_label[FREE_AREA_COUNTS];
+#endif
 
 	const char		*name;
 
@@ -447,7 +473,11 @@ struct zone {
 	ZONE_PADDING(_pad1_)
 
 	/* free areas of different sizes */
+#ifdef VENDOR_EDIT
+	struct free_area	free_area[FREE_AREA_COUNTS][MAX_ORDER];
+#else
 	struct free_area	free_area[MAX_ORDER];
+#endif
 
 	/* zone flags, see below */
 	unsigned long		flags;
@@ -581,6 +611,9 @@ struct zonelist {
 #ifndef CONFIG_DISCONTIGMEM
 /* The array of struct pages - for discontigmem use pgdat->lmem_map */
 extern struct page *mem_map;
+#ifdef CONFIG_MTK_MEMCFG
+extern unsigned long mem_map_size;
+#endif
 #endif
 
 /*

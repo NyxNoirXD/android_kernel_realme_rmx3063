@@ -20,7 +20,11 @@
 #include <linux/kthread.h>
 #include <linux/freezer.h>
 #include <linux/page_owner.h>
+#include <linux/psi.h>
 #include "internal.h"
+#ifdef VENDOR_EDIT
+#include <linux/mm.h>
+#endif 
 
 #ifdef CONFIG_COMPACTION
 static inline void count_compact_event(enum vm_event_item item)
@@ -1273,6 +1277,9 @@ static enum compact_result __compact_finished(struct zone *zone, struct compact_
 {
 	unsigned int order;
 	unsigned long watermark;
+#ifdef VENDOR_EDIT
+    int flc = 0;
+#endif
 
 	if (cc->contended || fatal_signal_pending(current))
 		return COMPACT_CONTENDED;
@@ -1308,8 +1315,15 @@ static enum compact_result __compact_finished(struct zone *zone, struct compact_
 		return COMPACT_CONTINUE;
 
 	/* Direct compactor: Is a suitable page free? */
+#ifdef VENDOR_EDIT
+    for (flc = 0; flc < FREE_AREA_COUNTS; flc++) {
+#endif
 	for (order = cc->order; order < MAX_ORDER; order++) {
+#ifdef VENDOR_EDIT
+        struct free_area *area = &zone->free_area[flc][order];
+#else
 		struct free_area *area = &zone->free_area[order];
+#endif
 		bool can_steal;
 
 		/* Job done if page is free of the right migratetype */
@@ -1331,6 +1345,9 @@ static enum compact_result __compact_finished(struct zone *zone, struct compact_
 			return COMPACT_SUCCESS;
 	}
 
+#ifdef VENDOR_EDIT
+    }
+#endif
 	return COMPACT_NO_SUITABLE_PAGE;
 }
 
@@ -1973,11 +1990,15 @@ static int kcompactd(void *p)
 	pgdat->kcompactd_classzone_idx = pgdat->nr_zones - 1;
 
 	while (!kthread_should_stop()) {
+		unsigned long pflags;
+
 		trace_mm_compaction_kcompactd_sleep(pgdat->node_id);
 		wait_event_freezable(pgdat->kcompactd_wait,
 				kcompactd_work_requested(pgdat));
 
+		psi_memstall_enter(&pflags);
 		kcompactd_do_work(pgdat);
+		psi_memstall_leave(&pflags);
 	}
 
 	return 0;

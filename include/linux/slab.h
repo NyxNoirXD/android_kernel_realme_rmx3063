@@ -14,7 +14,7 @@
 #include <linux/gfp.h>
 #include <linux/types.h>
 #include <linux/workqueue.h>
-
+#include <asm/memory.h>
 
 /*
  * Flags to pass to kmem_cache_create().
@@ -186,7 +186,11 @@ static inline const char *__check_heap_object(const void *ptr,
  * aligned buffers.
  */
 #ifndef ARCH_SLAB_MINALIGN
+#if defined(CONFIG_KASAN) && defined(CONFIG_KASAN_ENHANCEMENT)
+#define ARCH_SLAB_MINALIGN (1 << KASAN_SHADOW_SCALE_SHIFT)
+#else
 #define ARCH_SLAB_MINALIGN __alignof__(unsigned long long)
+#endif
 #endif
 
 /*
@@ -272,6 +276,13 @@ static inline const char *__check_heap_object(const void *ptr,
 
 #ifndef CONFIG_SLOB
 extern struct kmem_cache *kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];
+#if defined(VENDOR_EDIT) && defined(CONFIG_KMALLOC_DEBUG)
+/* Kui.Zhang@tech.kernel.mm, 2020-02-13, record the kmalloc cache with debug
+ * flag, such as SLAB_STORE_USER
+ */
+extern atomic64_t kmalloc_debug_caches[KMALLOC_SHIFT_HIGH + 1];
+extern int kmalloc_debug_enable;
+#endif
 #ifdef CONFIG_ZONE_DMA
 extern struct kmem_cache *kmalloc_dma_caches[KMALLOC_SHIFT_HIGH + 1];
 #endif
@@ -487,6 +498,17 @@ static __always_inline void *kmalloc(size_t size, gfp_t flags)
 			if (!index)
 				return ZERO_SIZE_PTR;
 
+#if defined(VENDOR_EDIT) && defined(CONFIG_KMALLOC_DEBUG)
+			/* Kui.Zhang@tech.kernel.mm, 2020-02-13, try to kmalloc from kmalloc_debug
+			 * caches fisrt.
+			 */
+			if (unlikely(kmalloc_debug_enable)) {
+				struct kmem_cache *s;
+				s = (struct kmem_cache *)atomic64_read(&kmalloc_debug_caches[index]);
+				if (s)
+					return kmem_cache_alloc_trace(s, flags, size);
+			}
+#endif
 			return kmem_cache_alloc_trace(kmalloc_caches[index],
 					flags, size);
 		}

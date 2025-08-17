@@ -5,6 +5,8 @@ if HAVE_ARCH_KASAN
 
 config KASAN
 	bool "KASan: runtime memory debugger"
+	# enable kasan with  memleak detect
+	default y if OPPO_MEMLEAK_DETECT = "all"
 	depends on SLUB || (SLAB && !DEBUG_SLAB)
 	select CONSTRUCTORS
 	select STACKDEPOT
@@ -24,6 +26,7 @@ choice
 	prompt "Instrumentation type"
 	depends on KASAN
 	default KASAN_OUTLINE
+	default KASAN_ENHANCEMENT
 
 config KASAN_OUTLINE
 	bool "Outline instrumentation"
@@ -42,6 +45,11 @@ config KASAN_INLINE
 	  it gives about x2 boost over outline instrumentation), but
 	  make kernel's .text size much bigger.
 	  This requires a gcc version of 5.0 or later.
+
+config KASAN_ENHANCEMENT
+	bool "shadow scale 16"
+	help
+	  kasan enhancement
 
 endchoice
 

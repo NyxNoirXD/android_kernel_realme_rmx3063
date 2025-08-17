@@ -39,6 +39,13 @@
 #include <linux/init.h>
 #include <linux/mmu_notifier.h>
 
+#ifdef CONFIG_MTK_ION
+#include "mtk/ion_drv.h"
+#endif
+#ifdef CONFIG_MTK_GPU_SUPPORT
+#include <mt-plat/mtk_gpu_utility.h>
+#endif
+
 #include <asm/tlb.h>
 #include "internal.h"
 
@@ -402,6 +409,24 @@ static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 	rcu_read_unlock();
 }
 
+/* show tasks' memory usage */
+void show_task_mem(void)
+{
+	dump_tasks(NULL, NULL);
+}
+
+/* dump extra info: HW memory usage */
+void oom_dump_extra_info(void)
+{
+#ifdef CONFIG_MTK_ION
+	ion_mm_heap_memory_detail();
+#endif
+#ifdef CONFIG_MTK_GPU_SUPPORT
+	if (mtk_dump_gpu_memory_usage() == false)
+		pr_info("mtk_dump_gpu_memory_usage not support\n");
+#endif
+}
+
 static void dump_header(struct oom_control *oc, struct task_struct *p)
 {
 	nodemask_t *nm = (oc->nodemask) ? oc->nodemask : &cpuset_current_mems_allowed;
@@ -421,6 +446,8 @@ static void dump_header(struct oom_control *oc, struct task_struct *p)
 		show_mem(SHOW_MEM_FILTER_NODES);
 	if (sysctl_oom_dump_tasks)
 		dump_tasks(oc->memcg, oc->nodemask);
+
+	oom_dump_extra_info();
 }
 
 /*
@@ -621,7 +648,7 @@ static int oom_reaper(void *unused)
 	return 0;
 }
 
-static void wake_oom_reaper(struct task_struct *tsk)
+void wake_oom_reaper(struct task_struct *tsk)
 {
 	if (!oom_reaper_th)
 		return;
@@ -656,6 +683,16 @@ static inline void wake_oom_reaper(struct task_struct *tsk)
 }
 #endif /* CONFIG_MMU */
 
+static void __mark_oom_victim(struct task_struct *tsk)
+{
+	struct mm_struct *mm = tsk->mm;
+
+	if (!cmpxchg(&tsk->signal->oom_mm, NULL, mm)) {
+		atomic_inc(&tsk->signal->oom_mm->mm_count);
+		set_bit(MMF_OOM_VICTIM, &mm->flags);
+	}
+}
+
 /**
  * mark_oom_victim - mark the given task as OOM victim
  * @tsk: task to mark
@@ -668,16 +705,24 @@ static inline void wake_oom_reaper(struct task_struct *tsk)
  */
 static void mark_oom_victim(struct task_struct *tsk)
 {
+
+#ifndef VENDOR_EDIT
 	struct mm_struct *mm = tsk->mm;
+#endif
 
 	WARN_ON(oom_killer_disabled);
 	/* OOM killer might race with memcg OOM */
 	if (test_and_set_tsk_thread_flag(tsk, TIF_MEMDIE))
 		return;
 
+#ifdef VENDOR_EDIT
+		/* oom_mm is bound to the signal struct life time. */
+		__mark_oom_victim(tsk);
+#else
 	/* oom_mm is bound to the signal struct life time. */
 	if (!cmpxchg(&tsk->signal->oom_mm, NULL, mm))
 		atomic_inc(&tsk->signal->oom_mm->mm_count);
+#endif
 
 	/*
 	 * Make sure that the task is woken up from uninterruptible sleep
@@ -1063,6 +1108,9 @@ bool out_of_memory(struct oom_control *oc)
 	/* Found nothing?!?! Either we hang forever, or we panic. */
 	if (!oc->chosen && !is_sysrq_oom(oc) && !is_memcg_oom(oc)) {
 		dump_header(oc, NULL);
+#ifdef CONFIG_PAGE_OWNER
+		print_max_page_owner();
+#endif
 		panic("Out of memory and no killable processes...\n");
 	}
 	if (oc->chosen && oc->chosen != (void *)-1UL) {
