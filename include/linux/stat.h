@@ -32,6 +32,9 @@ struct kstat {
 	struct timespec	ctime;
 	unsigned long	blksize;
 	unsigned long long	blocks;
+#ifdef CONFIG_KSU_SUSFS
+	u64		mnt_id;
+#endif
 };
 
 #endif

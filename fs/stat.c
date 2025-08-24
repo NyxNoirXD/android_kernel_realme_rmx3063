@@ -14,12 +14,33 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/pagemap.h>
+#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MOUNT)
+#include <linux/susfs_def.h>
+#endif
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 
+#include "internal.h"
+#include "mount.h"
+
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+extern void susfs_sus_ino_for_generic_fillattr(unsigned long ino, struct kstat *stat);
+#endif
+
 void generic_fillattr(struct inode *inode, struct kstat *stat)
 {
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	if (likely(susfs_is_current_non_root_user_app_proc()) &&
+			unlikely(inode->i_state & INODE_STATE_SUS_KSTAT)) {
+		susfs_sus_ino_for_generic_fillattr(inode->i_ino, stat);
+		stat->mode = inode->i_mode;
+		stat->rdev = inode->i_rdev;
+		stat->uid = inode->i_uid;
+		stat->gid = inode->i_gid;
+		return;
+	}
+#endif
 	stat->dev = inode->i_sb->s_dev;
 	stat->ino = inode->i_ino;
 	stat->mode = inode->i_mode;
@@ -98,6 +119,10 @@ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
 	int error = -EINVAL;
 	unsigned int lookup_flags = 0;
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	struct mount *mnt;
+#endif
+
 #ifdef CONFIG_KSU 
     ksu_handle_stat(&dfd, &filename, &flag);
 #endif
@@ -116,7 +141,15 @@ retry:
 		goto out;
 
 	error = vfs_getattr(&path, stat);
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	mnt = real_mount(path.mnt);
+	if (likely(susfs_is_current_non_root_user_app_proc())) {
+		for (; mnt->mnt_id >= DEFAULT_SUS_MNT_ID; mnt = mnt->mnt_parent) {}
+	}
+	stat->mnt_id = mnt->mnt_id;
+#else
 	path_put(&path);
+#endif
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
 		goto retry;
