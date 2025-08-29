@@ -1,4 +1,5 @@
 config OPPO_FORCE_DUMP
-	bool "config oppo force dump"
+	bool "Oppo force dump support"
 	help
-		define force dump functions
+	  Enable this option to define force dump functions
+	  used for debugging and stability checks.

@@ -1133,7 +1133,7 @@ config TFA9874_NONDSP_STEREO
 
 # Yongzhi.Zhang@PSW.MM.AudioDriver.Machine, 2018/11/14, add dbmdx
 config SND_SOC_DBMDX
-	bool "Use DBMDX As Sound Card"
+	tristate "Use DBMDX As Sound Card"
 	default n
 
 source sound/soc/codecs/dbmdx/Kconfig

@@ -38,7 +38,8 @@ source "drivers/soc/oppo/oppo_phoenix/Kconfig"
 
 #ifdef VENDOR_EDIT
 #* Bin.Xu@BSP.Kernel.Stability, 2019/12/2, Add for oppo force dump */
-source drivers/soc/oppo/oppo_dump/Kconfig"
-#Hailong.Liu@BSP.MM 2019/03/18, Add for svelte
+# Bin.Xu@BSP.Kernel.Stability, 2019/12/2, Add for oppo force dump
+source "drivers/soc/oppo/oppo_dump/Kconfig"
+# Hailong.Liu@BSP.MM 2019/03/18, Add for svelte
 source "drivers/soc/oppo/oppo_svelte/Kconfig"
 #endif /* VENDOR_EDIT */
