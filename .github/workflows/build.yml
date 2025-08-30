@@ -1,0 +1,87 @@
+name: Android Kernel Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "build" ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison flex libssl-dev libelf-dev build-essential \
+            gcc-aarch64-linux-gnu libncurses5-dev zlib1g-dev ccache python3
+
+      - name: Fetch Clang 9.0.3 (clang-r353983c) into ./clang
+        run: |
+          set -eux
+          # Shallow clone Android 10 prebuilts and move the exact clang version
+          git clone --depth=1 --branch android10-release \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-prebuilts
+          mv clang-prebuilts/clang-r353983c ./clang
+          rm -rf clang-prebuilts
+          ./clang/bin/clang --version
+
+      - name: Fetch AOSP GCC 4.9 aarch64 into ./gcc
+        run: |
+          set -eux
+          git clone --depth=1 --branch android10-release \
+            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64 gcc-prebuilts
+          mv gcc-prebuilts/aarch64-linux-android-4.9 ./gcc
+          rm -rf gcc-prebuilts
+          ./gcc/bin/aarch64-linux-android-gcc --version
+
+      - name: Build kernel (Android 10, 4.9.190)
+        env:
+          # Your requested exports
+          KBUILD_BUILD_USER: "snowluna"
+          KBUILD_BUILD_HOST: "android-build"
+        run: |
+          set -eux
+          export PATH="${PWD}/clang/bin:$PATH"
+          export CC="${PWD}/clang/bin/clang"
+
+          # Defconfig
+          make -j"$(nproc --all)" O=out ARCH=arm64 oppo6765_defconfig
+
+          # Compile
+          make -j"$(nproc --all)" \
+            ARCH=arm64 O=out \
+            CC="clang" \
+            CROSS_COMPILE="${PWD}/gcc/bin/aarch64-linux-android-" \
+            CLANG_TRIPLE="aarch64-linux-gnu-"
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          set -eux
+          mkdir -p upload
+          # Common output paths for 4.9 arm64; adjust as needed for your tree
+          cp -f out/arch/arm64/boot/Image* upload/ 2>/dev/null || true
+          cp -f out/arch/arm64/boot/dtb* upload/ 2>/dev/null || true
+          cp -f out/arch/arm64/boot/*.dtb upload/ 2>/dev/null || true
+          cp -f out/arch/arm64/boot/*.img upload/ 2>/dev/null || true
+          # Include config & logs for debugging
+          cp -f out/.config upload/ 2>/dev/null || true
+          find out -name "*.log" -maxdepth 2 -print -exec cp -f {} upload/ \; 2>/dev/null || true
+          ls -la upload || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build-artifacts
+          path: upload
+          if-no-files-found: warn
