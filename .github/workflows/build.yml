@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: recursive
 
@@ -26,7 +26,7 @@ jobs:
             nano bc bison ca-certificates curl flex gcc git libc6-dev \
             libssl-dev openssl python-is-python3 ssh wget zip zstd make \
             clang gcc-arm-linux-gnueabi software-properties-common build-essential \
-            libarchive-tools gcc-aarch64-linux-gnu pigz python3
+            libarchive-tools gcc-aarch64-linux-gnu pigz python3 ccache
 
       # Cache Clang
       - name: Cache Clang 9.0.3
@@ -58,18 +58,24 @@ jobs:
           tar -xf gcc-4.9.tar.gz
           rm gcc-4.9.tar.gz
 
-      - name: Install ccache
-        run: sudo apt-get install -y ccache
-
       - name: Set environment variables
         run: |
-          echo "PATH=${{ github.workspace }}/clang/bin:${{ github.workspace }}/aarch64-linux-android-4.9/bin:/usr/lib/ccache:${{ env.PATH }}" >> $GITHUB_ENV
+          echo "PATH=${{ github.workspace }}/clang/bin:${{ github.workspace }}/aarch64-linux-android-4.9/bin:/usr/lib/ccache:$PATH" >> $GITHUB_ENV
           echo "CC=${{ github.workspace }}/clang/bin/clang" >> $GITHUB_ENV
           echo "CROSS_COMPILE=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
           echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "CCACHE=ccache" >> $GITHUB_ENV
+          echo "CCACHE_PREFIX=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
 
       - name: Show Clang, GCC, and ccache versions
         run: |
+          export PATH=${{ github.workspace }}/clang/bin:${{ github.workspace }}/aarch64-linux-android-4.9/bin:/usr/lib/ccache:$PATH
+          export CC=${{ github.workspace }}/clang/bin/clang
+          export CROSS_COMPILE=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CCACHE=ccache
+          export CCACHE_PREFIX=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+
           echo "Clang version:"
           clang --version
           echo "GCC version:"
@@ -87,7 +93,7 @@ jobs:
             CC="${CC}" \
             CROSS_COMPILE="${CROSS_COMPILE}" \
             CLANG_TRIPLE="${CLANG_TRIPLE}" \
-            CCACHE=ccache
+            CCACHE="${CCACHE}"
 
       - name: Upload kernel image
         uses: actions/upload-artifact@v4
