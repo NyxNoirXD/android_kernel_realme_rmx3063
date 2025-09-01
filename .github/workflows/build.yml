@@ -58,28 +58,36 @@ jobs:
           tar -xf gcc-4.9.tar.gz
           rm gcc-4.9.tar.gz
 
+      - name: Setup ccache wrapper for cross-compiler
+        run: |
+          mkdir -p $HOME/bin
+          cat <<'EOF' > $HOME/bin/aarch64-linux-android-gcc
+          #!/bin/bash
+          exec ccache $GITHUB_WORKSPACE/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc "$@"
+          EOF
+          chmod +x $HOME/bin/aarch64-linux-android-gcc
+          echo "Added $HOME/bin to PATH"
+
       - name: Set environment variables
         run: |
-          echo "PATH=${{ github.workspace }}/clang/bin:${{ github.workspace }}/aarch64-linux-android-4.9/bin:/usr/lib/ccache:$PATH" >> $GITHUB_ENV
+          echo "PATH=$HOME/bin:${{ github.workspace }}/clang/bin:$PATH" >> $GITHUB_ENV
           echo "CC=${{ github.workspace }}/clang/bin/clang" >> $GITHUB_ENV
-          echo "CROSS_COMPILE=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
           echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
           echo "CCACHE=ccache" >> $GITHUB_ENV
-          echo "CCACHE_PREFIX=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
 
       - name: Show Clang, GCC, and ccache versions
         run: |
-          export PATH=${{ github.workspace }}/clang/bin:${{ github.workspace }}/aarch64-linux-android-4.9/bin:/usr/lib/ccache:$PATH
+          export PATH=$HOME/bin:${{ github.workspace }}/clang/bin:$PATH
           export CC=${{ github.workspace }}/clang/bin/clang
-          export CROSS_COMPILE=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          export CROSS_COMPILE=aarch64-linux-android-
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CCACHE=ccache
-          export CCACHE_PREFIX=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 
           echo "Clang version:"
           clang --version
           echo "GCC version:"
-          $CROSS_COMPILEgcc --version
+          aarch64-linux-android-gcc --version
           echo "ccache version:"
           ccache --version
 
