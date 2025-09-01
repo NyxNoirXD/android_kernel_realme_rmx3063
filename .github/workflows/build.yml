@@ -1,0 +1,96 @@
+name: Android Kernel Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build-test
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      KBUILD_BUILD_USER: "snowluna"
+      KBUILD_BUILD_HOST: "android-build"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            nano bc bison ca-certificates curl flex gcc git libc6-dev \
+            libssl-dev openssl python-is-python3 ssh wget zip zstd make \
+            clang gcc-arm-linux-gnueabi software-properties-common build-essential \
+            libarchive-tools gcc-aarch64-linux-gnu pigz python3
+
+      # Cache Clang
+      - name: Cache Clang 9.0.3
+        uses: actions/cache@v3
+        id: cache-clang
+        with:
+          path: clang
+          key: clang-9.0.3
+
+      - name: Download and extract Clang 9.0.3
+        if: steps.cache-clang.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -O clang-r353983c.tar.gz
+          tar -xf clang-r353983c.tar.gz
+          rm clang-r353983c.tar.gz
+
+      # Cache GCC
+      - name: Cache GCC 4.9
+        uses: actions/cache@v3
+        id: cache-gcc
+        with:
+          path: aarch64-linux-android-4.9
+          key: gcc-4.9
+
+      - name: Download and extract GCC 4.9
+        if: steps.cache-gcc.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -O gcc-4.9.tar.gz
+          tar -xf gcc-4.9.tar.gz
+          rm gcc-4.9.tar.gz
+
+      - name: Install ccache
+        run: sudo apt-get install -y ccache
+
+      - name: Set environment variables
+        run: |
+          echo "PATH=${{ github.workspace }}/clang/bin:${{ github.workspace }}/aarch64-linux-android-4.9/bin:/usr/lib/ccache:${{ env.PATH }}" >> $GITHUB_ENV
+          echo "CC=${{ github.workspace }}/clang/bin/clang" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=${{ github.workspace }}/aarch64-linux-android-4.9/bin/aarch64-linux-android-" >> $GITHUB_ENV
+          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+
+      - name: Show Clang, GCC, and ccache versions
+        run: |
+          echo "Clang version:"
+          clang --version
+          echo "GCC version:"
+          $CROSS_COMPILEgcc --version
+          echo "ccache version:"
+          ccache --version
+
+      - name: Build kernel defconfig
+        run: |
+          make -j$(nproc --all) O=out ARCH=arm64 oppo6765_defconfig
+
+      - name: Build kernel
+        run: |
+          make -j$(nproc --all) ARCH=arm64 O=out \
+            CC="${CC}" \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            CCACHE=ccache
+
+      - name: Upload kernel image
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel-image
+          path: out/arch/arm64/boot/Image.gz-dtb
