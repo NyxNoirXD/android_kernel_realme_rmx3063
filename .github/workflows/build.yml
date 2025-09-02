@@ -41,7 +41,7 @@ jobs:
       - name: Build Kernel
         run: |
           mkdir -p out
-          make O=out oppo6765_defconfig
+          make O=out ARCH=arm64 oppo6765_defconfig
           make -j$(nproc --all) \
             ARCH=arm64 \
             O=out \
