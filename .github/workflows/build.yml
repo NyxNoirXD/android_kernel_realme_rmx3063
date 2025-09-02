@@ -41,7 +41,7 @@ jobs:
           path: clang
           key: ${{ runner.os }}-clang-r353983c-v1
 
-      # Cache GCC toolchain
+      # Cache GCC 4.9
       - name: Cache GCC 4.9
         id: cache-gcc
         uses: actions/cache@v4
@@ -91,24 +91,24 @@ jobs:
       - name: Show ccache stats
         run: ccache -s || true
 
-      - name: Prepare AnyKernel flashable zip
+      - name: Prepare flashable files for artifact
         run: |
           # Clone AnyKernel3
           git clone https://github.com/NyxNoirXD/AnyKernel3.git AnyKernel3-work
-          
-          # Copy Image.gz-dtb into AnyKernel3 root
+
+          # Copy kernel image into AnyKernel root
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3-work/
 
           # Read kernel version from Makefile
           KVER=$(awk '/^VERSION =/ {v=$3} /^PATCHLEVEL =/ {p=$3} /^SUBLEVEL =/ {s=$3} END {print v"."p"."s}' Makefile)
           echo "Kernel version: $KVER"
 
-          # Zip AnyKernel3 folder directly into flashable zip
-          cd AnyKernel3-work
-          zip -r "../lunacore-$KVER.zip" ./*
+          # Copy all files into artifact folder
+          mkdir -p ../artifact
+          cp -r AnyKernel3-work/* ../artifact/
 
-      - name: Upload flashable zip artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lunacore
-          path: lunacore-*.zip
+          name: lunacore-$KVER.zip
+          path: artifact/*
