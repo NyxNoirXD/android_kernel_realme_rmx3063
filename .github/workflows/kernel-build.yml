@@ -77,6 +77,10 @@ jobs:
 
       - name: Build Kernel
         run: |
+          # build metadata
+          export KBUILD_BUILD_USER="snowluna"
+          export KBUILD_BUILD_HOST="android-build"
+          
           mkdir -p out
           make O=out ARCH=arm64 oppo6765_defconfig
           make -j$(nproc --all) \
