@@ -12,7 +12,6 @@ jobs:
     env:
       KBUILD_BUILD_USER: "snowluna"
       KBUILD_BUILD_HOST: "android-build"
-      PATH: $HOME/bin:${{ github.workspace }}/clang/bin:${{ env.PATH }}
       CC: ${{ github.workspace }}/clang/bin/clang
       CROSS_COMPILE: aarch64-linux-android-
       CLANG_TRIPLE: aarch64-linux-gnu-
@@ -82,6 +81,7 @@ jobs:
           exec ccache $GITHUB_WORKSPACE/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc "$@"
           EOF
           chmod +x $HOME/bin/aarch64-linux-android-gcc
+          echo "$HOME/bin:${{ github.workspace }}/clang/bin" >> $GITHUB_ENV
 
       - name: Show toolchain versions
         run: |
