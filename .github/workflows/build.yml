@@ -32,9 +32,12 @@ jobs:
           wget https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -O gcc-4.9.tar.gz
           mkdir gcc-4.9 && tar -xf gcc-4.9.tar.gz -C gcc-4.9
 
+      - name: Set up toolchain PATH
+        run: |
+          echo "PATH=$PWD/clang/bin:$PWD/gcc-4.9/bin:$PATH" >> $GITHUB_ENV
+
       - name: Build Kernel
         run: |
-          export PATH=$PWD/clang/bin:$PWD/gcc-4.9/bin:$PATH
           mkdir -p out
           make O=out <your_defconfig>
           make -j$(nproc --all) \
