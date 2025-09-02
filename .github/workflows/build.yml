@@ -24,7 +24,7 @@ jobs:
             libncurses-dev libssl-dev lld llvm make python3 \
             unzip wget xz-utils zip
 
-      # Cache ccache results (persistent across commits)
+      # Cache ccache results
       - name: Cache ccache
         uses: actions/cache@v4
         with:
@@ -68,10 +68,8 @@ jobs:
       - name: Set up ccache for Clang and GCC
         run: |
           mkdir -p ~/.ccache/bin
-          # Wrap Clang with ccache
           ln -sf $(which ccache) ~/.ccache/bin/clang
           ln -sf $(which ccache) ~/.ccache/bin/clang++
-          # Wrap GCC cross-compiler with ccache
           ln -sf $(which ccache) ~/.ccache/bin/aarch64-linux-android-gcc
           ln -sf $(which ccache) ~/.ccache/bin/aarch64-linux-android-g++
           ln -sf $(which ccache) ~/.ccache/bin/aarch64-linux-android-ld
@@ -81,7 +79,7 @@ jobs:
         run: |
           mkdir -p out
           make O=out ARCH=arm64 oppo6765_defconfig
-          make -j4 \
+          make -j$(nproc --all) \
             ARCH=arm64 \
             O=out \
             CC="clang" \
@@ -96,19 +94,20 @@ jobs:
           # Create artifact folder at repo root
           mkdir -p artifact
 
-          # Copy kernel image into artifact
+          # Copy kernel image
           cp out/arch/arm64/boot/Image.gz-dtb artifact/
 
-          # Clone AnyKernel3 and copy its files into artifact
+          # Clone AnyKernel3 and copy its files
           git clone https://github.com/NyxNoirXD/AnyKernel3.git ak
           cp -r ak/* artifact/
 
-          # Read kernel version from Makefile
+          # Read kernel version and export as GitHub env variable
           KVER=$(awk '/^VERSION =/ {v=$3} /^PATCHLEVEL =/ {p=$3} /^SUBLEVEL =/ {s=$3} END {print v"."p"."s}' Makefile)
+          echo "KVER=$KVER" >> $GITHUB_ENV
           echo "Kernel version: $KVER"
 
       - name: Upload flashable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lunacore-$KVER.zip
+          name: lunacore-${{ env.KVER }}
           path: artifact/*
