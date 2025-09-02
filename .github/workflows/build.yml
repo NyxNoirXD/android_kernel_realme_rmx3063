@@ -91,12 +91,24 @@ jobs:
       - name: Show ccache stats
         run: ccache -s || true
 
-      - name: Upload Kernel Artifacts
+      - name: Prepare AnyKernel flashable zip
+        run: |
+          # Clone AnyKernel3
+          git clone https://github.com/NyxNoirXD/AnyKernel3.git AnyKernel3-work
+          
+          # Copy Image.gz-dtb into AnyKernel3 root
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3-work/
+
+          # Read kernel version from Makefile
+          KVER=$(awk '/^VERSION =/ {v=$3} /^PATCHLEVEL =/ {p=$3} /^SUBLEVEL =/ {s=$3} END {print v"."p"."s}' Makefile)
+          echo "Kernel version: $KVER"
+
+          # Zip AnyKernel3 folder directly into flashable zip
+          cd AnyKernel3-work
+          zip -r "../lunacore-$KVER.zip" ./*
+
+      - name: Upload flashable zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-build
-          path: |
-            out/arch/arm64/boot/Image.gz-dtb
-            out/arch/arm64/boot/dtbo.img
-            out/arch/arm64/boot/*.dtb
-            out/*.ko
+          name: lunacore
+          path: lunacore-*.zip
