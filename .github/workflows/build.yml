@@ -12,6 +12,11 @@ jobs:
     env:
       KBUILD_BUILD_USER: "snowluna"
       KBUILD_BUILD_HOST: "android-build"
+      PATH: $HOME/bin:${{ github.workspace }}/clang/bin:${{ env.PATH }}
+      CC: ${{ github.workspace }}/clang/bin/clang
+      CROSS_COMPILE: aarch64-linux-android-
+      CLANG_TRIPLE: aarch64-linux-gnu-
+      CCACHE: ccache
 
     steps:
       - name: Checkout repository
@@ -40,7 +45,8 @@ jobs:
         if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -O clang-r353983c.tar.gz
-          tar -xf clang-r353983c.tar.gz
+          mkdir -p clang
+          tar -xf clang-r353983c.tar.gz -C clang
           rm clang-r353983c.tar.gz
 
       # Cache GCC
@@ -55,8 +61,18 @@ jobs:
         if: steps.cache-gcc.outputs.cache-hit != 'true'
         run: |
           wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -O gcc-4.9.tar.gz
-          tar -xf gcc-4.9.tar.gz
+          mkdir -p aarch64-linux-android-4.9
+          tar -xf gcc-4.9.tar.gz -C aarch64-linux-android-4.9
           rm gcc-4.9.tar.gz
+
+      # Cache ccache
+      - name: Cache ccache
+        uses: actions/cache@v3
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
 
       - name: Setup ccache wrapper for cross-compiler
         run: |
@@ -66,24 +82,9 @@ jobs:
           exec ccache $GITHUB_WORKSPACE/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc "$@"
           EOF
           chmod +x $HOME/bin/aarch64-linux-android-gcc
-          echo "Added $HOME/bin to PATH"
 
-      - name: Set environment variables
+      - name: Show toolchain versions
         run: |
-          echo "PATH=$HOME/bin:${{ github.workspace }}/clang/bin:$PATH" >> $GITHUB_ENV
-          echo "CC=${{ github.workspace }}/clang/bin/clang" >> $GITHUB_ENV
-          echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
-          echo "CCACHE=ccache" >> $GITHUB_ENV
-
-      - name: Show Clang, GCC, and ccache versions
-        run: |
-          export PATH=$HOME/bin:${{ github.workspace }}/clang/bin:$PATH
-          export CC=${{ github.workspace }}/clang/bin/clang
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CCACHE=ccache
-
           echo "Clang version:"
           clang --version
           echo "GCC version:"
@@ -97,14 +98,13 @@ jobs:
 
       - name: Build kernel
         run: |
-          make -j$(nproc --all) ARCH=arm64 O=out \
-            CC="${CC}" \
-            CROSS_COMPILE="${CROSS_COMPILE}" \
-            CLANG_TRIPLE="${CLANG_TRIPLE}" \
-            CCACHE="${CCACHE}"
+          make -j$(nproc --all) ARCH=arm64 O=out 2>&1 | tee out/build.log
 
-      - name: Upload kernel image
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-image
-          path: out/arch/arm64/boot/Image.gz-dtb
+          name: kernel-build
+          path: |
+            out/arch/arm64/boot/Image.gz-dtb
+            out/.config
+            out/build.log
