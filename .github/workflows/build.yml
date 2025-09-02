@@ -1,46 +1,52 @@
 name: Build Kernel
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - build-test
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout kernel source
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Checkout kernel source
+      uses: actions/checkout@v4
+      with:
+        submodules: true
 
-      - name: Set env to avoid OPPO warning
-        run: echo "OPPO_AGING_TEST=" >> $GITHUB_ENV
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison build-essential ccache curl flex git \
+          libncurses5-dev libssl-dev make python3 unzip zip
 
-      - name: Download Clang
-        run: |
-          curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz
-          mkdir clang && tar -xf clang-r353983c.tar.gz -C clang
+    - name: Download Clang
+      run: |
+        curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -o clang.tar.gz
+        mkdir clang && tar -xf clang.tar.gz -C clang
 
-      - name: Build kernel
-        run: |
-          export PATH="${PWD}/clang/bin:${PWD}/gcc/aarch64-linux-android-4.9/bin:$PATH"
-          export CC="${PWD}/clang/bin/clang"
-          export KBUILD_BUILD_USER="snowluna"
-          export KBUILD_BUILD_HOST="android-build"
+    - name: Download GCC
+      run: |
+        curl -L https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -o gcc-4.9.tar.gz
+        mkdir gcc && tar -xf gcc-4.9.tar.gz -C gcc
 
-          make -j$(nproc --all) O=out ARCH=arm64 oppo6765_defconfig
-          make -j$(nproc --all) \
-            ARCH=arm64 \
-            O=out \
-            CC="clang" \
-            CROSS_COMPILE="${PWD}/gcc/aarch64-linux-android-4.9/bin/aarch64-linux-android-" \
-            CLANG_TRIPLE="aarch64-linux-gnu-"
+    - name: Build kernel
+      run: |
+        export PATH=$PWD/clang/bin:$PWD/gcc/bin:$PATH
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CROSS_COMPILE=$PWD/gcc/bin/aarch64-linux-android-
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        export CC=clang
 
-      - name: Upload Image.gz-dtb
-        uses: actions/upload-artifact@v4
-        with:
-          name: Image.gz-dtb
-          path: out/arch/arm64/boot/Image.gz-dtb
+        make -j$(nproc) O=out oppo6765_defconfig
+        make -j$(nproc) O=out
+
+    - name: Upload kernel Image
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel
+        path: out/arch/arm64/boot/Image.gz-dtb
