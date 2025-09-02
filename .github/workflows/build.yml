@@ -81,7 +81,7 @@ jobs:
         run: |
           mkdir -p out
           make O=out ARCH=arm64 oppo6765_defconfig
-          make -j$(nproc --all) \
+          make -j4 \
             ARCH=arm64 \
             O=out \
             CC="clang" \
@@ -93,21 +93,21 @@ jobs:
 
       - name: Prepare flashable files for artifact
         run: |
-          # Clone AnyKernel3
-          git clone https://github.com/NyxNoirXD/AnyKernel3.git AnyKernel3-work
+          # Create artifact folder at repo root
+          mkdir -p artifact
 
-          # Copy kernel image into AnyKernel root
-          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3-work/
+          # Copy kernel image into artifact
+          cp out/arch/arm64/boot/Image.gz-dtb artifact/
+
+          # Clone AnyKernel3 and copy its files into artifact
+          git clone https://github.com/NyxNoirXD/AnyKernel3.git ak
+          cp -r ak/* artifact/
 
           # Read kernel version from Makefile
           KVER=$(awk '/^VERSION =/ {v=$3} /^PATCHLEVEL =/ {p=$3} /^SUBLEVEL =/ {s=$3} END {print v"."p"."s}' Makefile)
           echo "Kernel version: $KVER"
 
-          # Copy all files into artifact folder
-          mkdir -p ../artifact
-          cp -r AnyKernel3-work/* ../artifact/
-
-      - name: Upload artifact
+      - name: Upload flashable artifact
         uses: actions/upload-artifact@v4
         with:
           name: lunacore-$KVER.zip
