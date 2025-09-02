@@ -81,7 +81,7 @@ jobs:
           exec ccache $GITHUB_WORKSPACE/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc "$@"
           EOF
           chmod +x $HOME/bin/aarch64-linux-android-gcc
-          echo "$HOME/bin:${{ github.workspace }}/clang/bin" >> $GITHUB_ENV
+          echo "PATH=$HOME/bin:${{ github.workspace }}/clang/bin:$PATH" >> $GITHUB_ENV
 
       - name: Show toolchain versions
         run: |
