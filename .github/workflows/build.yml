@@ -42,7 +42,7 @@ jobs:
         run: |
           mkdir -p out
           make O=out ARCH=arm64 oppo6765_defconfig
-          make -j$(nproc --all) \
+          make -j4 \
             ARCH=arm64 \
             O=out \
             CC="clang" \
