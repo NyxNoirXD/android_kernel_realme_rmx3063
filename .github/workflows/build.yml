@@ -1,90 +1,46 @@
-name: Android Kernel Build
+name: Kernel Build
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - build-test
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  build_kernel:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout source
         uses: actions/checkout@v3
-        with:
-          submodules: recursive
 
-      - name: Install build dependencies
+      - name: Download and extract Clang
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            bc bison ca-certificates curl flex gcc git libc6-dev \
-            libssl-dev make openssl python-is-python3 wget zip zstd ccache
+          curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz
+          mkdir clang
+          tar -xf clang-r353983c.tar.gz -C clang
 
-      # Cache GCC
-      - name: Cache GCC 4.9
-        uses: actions/cache@v3
-        id: cache-gcc
-        with:
-          path: gcc
-          key: gcc-4.9
-
-      - name: Download and extract GCC 4.9
-        if: steps.cache-gcc.outputs.cache-hit != 'true'
+      - name: Set up environment and build
         run: |
-          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/master.tar.gz -O gcc.tar.gz
-          mkdir -p gcc
-          tar -xf gcc.tar.gz -C gcc
-          rm gcc.tar.gz
+          export PATH="${PWD}/clang/bin:${PWD}/gcc/aarch64-linux-android-4.9/bin:$PATH"
+          export CC="${PWD}/clang/bin/clang"
+          export KBUILD_BUILD_USER="snowluna"
+          export KBUILD_BUILD_HOST="android-build"
 
-      # Cache Clang
-      - name: Cache Clang 9.0.3
-        uses: actions/cache@v3
-        id: cache-clang
-        with:
-          path: clang
-          key: clang-9.0.3
-
-      - name: Download and extract Clang 9.0.3
-        if: steps.cache-clang.outputs.cache-hit != 'true'
-        run: |
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -O clang.tar.gz
-          mkdir -p clang
-          tar -xf clang.tar.gz -C clang
-          rm clang.tar.gz
-
-      - name: Setup environment
-        run: |
-          echo "PATH=${PWD}/clang/bin:$PATH" >> $GITHUB_ENV
-          echo "PATH=${PWD}/gcc/bin:$PATH" >> $GITHUB_ENV
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "KBUILD_BUILD_USER=snowluna" >> $GITHUB_ENV
-          echo "KBUILD_BUILD_HOST=android-build" >> $GITHUB_ENV
-
-      - name: Show toolchain versions
-        run: |
-          clang --version
-          ${PWD}/gcc/bin/aarch64-linux-android-gcc --version
-
-      - name: Build kernel defconfig
-        run: |
+          # Defconfig
           make -j$(nproc --all) O=out ARCH=arm64 oppo6765_defconfig
 
-      - name: Build kernel
-        run: |
-          make -j$(nproc --all) ARCH=arm64 O=out \
+          # Build
+          make -j$(nproc --all) \
+            ARCH=arm64 \
+            O=out \
             CC="clang" \
-            CROSS_COMPILE="${PWD}/gcc/bin/aarch64-linux-android-" \
-            CLANG_TRIPLE="aarch64-linux-gnu-" \
-            2>&1 | tee out/build.log
+            CROSS_COMPILE="${PWD}/gcc/aarch64-linux-android-4.9/bin/aarch64-linux-android-" \
+            CLANG_TRIPLE="aarch64-linux-gnu-"
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload Image.gz-dtb
+        uses: actions/upload-artifact@v3
         with:
-          name: kernel-build
-          path: |
-            out/arch/arm64/boot/Image.gz-dtb
-            out/.config
-            out/build.log
+          name: Image.gz-dtb
+          path: out/arch/arm64/boot/Image.gz-dtb
