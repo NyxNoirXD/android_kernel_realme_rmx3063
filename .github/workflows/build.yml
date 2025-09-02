@@ -1,37 +1,33 @@
-name: Kernel Build
+name: Build Kernel
 
 on:
-  push:
-    branches:
-      - build-test
-  pull_request:
-  workflow_dispatch:
+  workflow_dispatch: # manual trigger
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v3
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Download and extract Clang
+      - name: Set env to avoid OPPO warning
+        run: echo "OPPO_AGING_TEST=" >> $GITHUB_ENV
+
+      - name: Download Clang
         run: |
           curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz
-          mkdir clang
-          tar -xf clang-r353983c.tar.gz -C clang
+          mkdir clang && tar -xf clang-r353983c.tar.gz -C clang
 
-      - name: Set up environment and build
+      - name: Build kernel
         run: |
           export PATH="${PWD}/clang/bin:${PWD}/gcc/aarch64-linux-android-4.9/bin:$PATH"
           export CC="${PWD}/clang/bin/clang"
           export KBUILD_BUILD_USER="snowluna"
           export KBUILD_BUILD_HOST="android-build"
 
-          # Defconfig
           make -j$(nproc --all) O=out ARCH=arm64 oppo6765_defconfig
-
-          # Build
           make -j$(nproc --all) \
             ARCH=arm64 \
             O=out \
