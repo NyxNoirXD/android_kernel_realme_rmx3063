@@ -24,12 +24,37 @@ jobs:
             libncurses-dev libssl-dev lld llvm make python3 \
             unzip wget xz-utils zip
 
+      # Cache ccache results
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      # Cache Clang toolchain
+      - name: Cache Clang
+        uses: actions/cache@v4
+        with:
+          path: clang
+          key: ${{ runner.os }}-clang-r353983c
+
+      # Cache GCC toolchain
+      - name: Cache GCC 4.9
+        uses: actions/cache@v4
+        with:
+          path: gcc-4.9
+          key: ${{ runner.os }}-gcc-4.9
+
       - name: Download Clang
+        if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
           wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -O clang.tar.gz
           mkdir clang && tar -xf clang.tar.gz -C clang
 
       - name: Download GCC 4.9
+        if: steps.cache-gcc.outputs.cache-hit != 'true'
         run: |
           wget https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -O gcc-4.9.tar.gz
           mkdir gcc-4.9 && tar -xf gcc-4.9.tar.gz -C gcc-4.9
@@ -45,9 +70,12 @@ jobs:
           make -j4 \
             ARCH=arm64 \
             O=out \
-            CC="clang" \
-            CROSS_COMPILE="${PWD}/gcc-4.9/bin/aarch64-linux-android-" \
+            CC="ccache clang" \
+            CROSS_COMPILE="ccache ${PWD}/gcc-4.9/bin/aarch64-linux-android-" \
             CLANG_TRIPLE="aarch64-linux-gnu-"
+
+      - name: Show ccache stats
+        run: ccache -s || true
 
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
