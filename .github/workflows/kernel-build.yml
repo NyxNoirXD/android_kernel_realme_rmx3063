@@ -1,0 +1,113 @@
+name: Kernel Build
+
+on:
+  push:
+    branches:
+      - LunaCore
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex git \
+            libncurses-dev libssl-dev lld llvm make python3 \
+            unzip wget xz-utils zip
+
+      # Cache ccache results
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      # Cache Clang toolchain
+      - name: Cache Clang
+        id: cache-clang
+        uses: actions/cache@v4
+        with:
+          path: clang
+          key: ${{ runner.os }}-clang-r353983c-v1
+
+      # Cache GCC 4.9
+      - name: Cache GCC 4.9
+        id: cache-gcc
+        uses: actions/cache@v4
+        with:
+          path: gcc-4.9
+          key: ${{ runner.os }}-gcc-4.9-v1
+
+      - name: Download Clang
+        if: steps.cache-clang.outputs.cache-hit != 'true'
+        run: |
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -O clang.tar.gz
+          mkdir clang && tar -xf clang.tar.gz -C clang
+
+      - name: Download GCC 4.9
+        if: steps.cache-gcc.outputs.cache-hit != 'true'
+        run: |
+          wget https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -O gcc-4.9.tar.gz
+          mkdir gcc-4.9 && tar -xf gcc-4.9.tar.gz -C gcc-4.9
+
+      - name: Set up toolchain PATH
+        run: |
+          echo "PATH=$PWD/clang/bin:$PWD/gcc-4.9/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Set up ccache for Clang and GCC
+        run: |
+          mkdir -p ~/.ccache/bin
+          ln -sf $(which ccache) ~/.ccache/bin/clang
+          ln -sf $(which ccache) ~/.ccache/bin/clang++
+          ln -sf $(which ccache) ~/.ccache/bin/aarch64-linux-android-gcc
+          ln -sf $(which ccache) ~/.ccache/bin/aarch64-linux-android-g++
+          ln -sf $(which ccache) ~/.ccache/bin/aarch64-linux-android-ld
+          echo "PATH=$HOME/.ccache/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Build Kernel
+        run: |
+          mkdir -p out
+          make O=out ARCH=arm64 oppo6765_defconfig
+          make -j$(nproc --all) \
+            ARCH=arm64 \
+            O=out \
+            CC="clang" \
+            CROSS_COMPILE="${PWD}/gcc-4.9/bin/aarch64-linux-android-" \
+            CLANG_TRIPLE="aarch64-linux-gnu-"
+
+      - name: Show ccache stats
+        run: ccache -s || true
+
+      - name: Prepare flashable files for artifact
+        run: |
+          # Create artifact folder at repo root
+          mkdir -p artifact
+
+          # Copy kernel image
+          cp out/arch/arm64/boot/Image.gz-dtb artifact/
+
+          # Clone AnyKernel3 and copy its files
+          git clone https://github.com/NyxNoirXD/AnyKernel3.git ak
+          cp -r ak/* artifact/
+
+          # Read kernel version and export as GitHub env variable
+          KVER=$(awk '/^VERSION =/ {v=$3} /^PATCHLEVEL =/ {p=$3} /^SUBLEVEL =/ {s=$3} END {print v"."p"."s}' Makefile)
+          echo "KVER=$KVER" >> $GITHUB_ENV
+          echo "Kernel version: $KVER"
+
+      - name: Upload flashable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunacore-${{ env.KVER }}
+          path: artifact/*
