@@ -1,52 +1,55 @@
-name: Build Kernel
+name: Kernel Build
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - build-test
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout kernel source
-      uses: actions/checkout@v4
-      with:
-        submodules: true
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          bc bison build-essential ccache curl flex git \
-          libncurses5-dev libssl-dev make python3 unzip zip
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex git \
+            libncurses-dev libssl-dev lld llvm make python3 \
+            unzip wget xz-utils zip
 
-    - name: Download Clang
-      run: |
-        curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -o clang.tar.gz
-        mkdir clang && tar -xf clang.tar.gz -C clang
+      - name: Download Clang
+        run: |
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r353983c.tar.gz -O clang.tar.gz
+          mkdir clang && tar -xf clang.tar.gz -C clang
 
-    - name: Download GCC
-      run: |
-        curl -L https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -o gcc-4.9.tar.gz
-        mkdir gcc && tar -xf gcc-4.9.tar.gz -C gcc
+      - name: Download GCC 4.9
+        run: |
+          wget https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android10-dev.tar.gz -O gcc-4.9.tar.gz
+          mkdir gcc-4.9 && tar -xf gcc-4.9.tar.gz -C gcc-4.9
 
-    - name: Build kernel
-      run: |
-        export PATH=$PWD/clang/bin:$PWD/gcc/bin:$PATH
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CROSS_COMPILE=$PWD/gcc/bin/aarch64-linux-android-
-        export CLANG_TRIPLE=aarch64-linux-gnu-
-        export CC=clang
+      - name: Build Kernel
+        run: |
+          export PATH=$PWD/clang/bin:$PWD/gcc-4.9/bin:$PATH
+          mkdir -p out
+          make O=out <your_defconfig>
+          make -j$(nproc --all) \
+            ARCH=arm64 \
+            O=out \
+            CC="clang" \
+            CROSS_COMPILE="${PWD}/gcc-4.9/bin/aarch64-linux-android-" \
+            CLANG_TRIPLE="aarch64-linux-gnu-"
 
-        make -j$(nproc) O=out oppo6765_defconfig
-        make -j$(nproc) O=out
-
-    - name: Upload kernel Image
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel
-        path: out/arch/arm64/boot/Image.gz-dtb
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build
+          path: |
+            out/arch/arm64/boot/Image.gz-dtb
+            out/arch/arm64/boot/dtbo.img
+            out/arch/arm64/boot/*.dtb
+            out/*.ko
