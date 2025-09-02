@@ -24,12 +24,12 @@ jobs:
             libncurses-dev libssl-dev lld llvm make python3 \
             unzip wget xz-utils zip
 
-      # Cache ccache results
+      # Cache ccache results (persistent across commits)
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-ccache-${{ github.ref_name }}
           restore-keys: |
             ${{ runner.os }}-ccache-
 
@@ -39,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: clang
-          key: ${{ runner.os }}-clang-r353983c
+          key: ${{ runner.os }}-clang-r353983c-v1
 
       # Cache GCC toolchain
       - name: Cache GCC 4.9
@@ -47,7 +47,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: gcc-4.9
-          key: ${{ runner.os }}-gcc-4.9
+          key: ${{ runner.os }}-gcc-4.9-v1
 
       - name: Download Clang
         if: steps.cache-clang.outputs.cache-hit != 'true'
