@@ -24,7 +24,7 @@ jobs:
 
       - name: Download Clang
         run: |
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r353983c.tar.gz -O clang.tar.gz
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android10-dev/clang-r353983c.tar.gz -O clang.tar.gz
           mkdir clang && tar -xf clang.tar.gz -C clang
 
       - name: Download GCC 4.9
