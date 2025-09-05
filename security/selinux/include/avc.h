@@ -160,6 +160,8 @@ int avc_has_perm_flags(u32 ssid, u32 tsid,
 int avc_has_extended_perms(u32 ssid, u32 tsid, u16 tclass, u32 requested,
 		u8 driver, u8 perm, struct common_audit_data *ad);
 
+/* Vendor extension: allow across-file use of the permissive helper */
+int is_oppo_permissive(u32 ssid, u32 tsid, u32 requested);
 
 u32 avc_policy_seqno(void);
 
