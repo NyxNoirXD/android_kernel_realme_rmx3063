@@ -3,7 +3,7 @@ name: Kernel Build
 on:
   push:
     branches:
-      - LunaCore
+      - rutilsdaemon-bypass
   pull_request:
 
 jobs:
